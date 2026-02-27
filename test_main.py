@@ -6,6 +6,8 @@ from pydantic import ValidationError
 import requests
 
 from main import (
+    get_pr_metadata,
+    get_repo_context,
     validate_env_vars,
     get_pr_diff,
     extract_json_from_llm_response,
@@ -109,7 +111,7 @@ def test_analyze_diff_success(valid_config, mocker):
     mock_response.raise_for_status.return_value = None
     mocker.patch("requests.post", return_value=mock_response)
     
-    result = analyze_diff(valid_config, "fake diff")
+    result = analyze_diff(valid_config, "fake diff", {}, "")
     assert result is not None
     assert result.has_issues is True
     assert len(result.security) == 1
@@ -117,7 +119,7 @@ def test_analyze_diff_success(valid_config, mocker):
 
 def test_analyze_diff_request_exception(valid_config, mocker):
     mocker.patch("requests.post", side_effect=requests.RequestException("Timeout"))
-    result = analyze_diff(valid_config, "fake diff")
+    result = analyze_diff(valid_config, "fake diff", {}, "")
     assert result is None
 
 def test_analyze_diff_invalid_json(valid_config, mocker):
@@ -126,7 +128,7 @@ def test_analyze_diff_invalid_json(valid_config, mocker):
         "choices": [{"message": {"content": "Not JSON at all"}}]
     }
     mocker.patch("requests.post", return_value=mock_response)
-    result = analyze_diff(valid_config, "fake diff")
+    result = analyze_diff(valid_config, "fake diff", {}, "")
     assert result is None
 
 def test_analyze_diff_validation_error(valid_config, mocker):
@@ -139,7 +141,7 @@ def test_analyze_diff_validation_error(valid_config, mocker):
         "choices": [{"message": {"content": json.dumps(invalid_schema_json)}}]
     }
     mocker.patch("requests.post", return_value=mock_response)
-    result = analyze_diff(valid_config, "fake diff")
+    result = analyze_diff(valid_config, "fake diff", {}, "")
     assert result is None
 
 def test_format_review_comment_no_issues():
@@ -266,7 +268,7 @@ def test_analyze_diff_request_exception_with_response(valid_config, mocker):
     exc.response = mock_resp
     mocker.patch("requests.post", side_effect=exc)
     
-    result = analyze_diff(valid_config, "fake diff")
+    result = analyze_diff(valid_config, "fake diff", {}, "")
     assert result is None
 
 def test_format_review_comment_empty_issues():
@@ -321,3 +323,85 @@ def test_dunder_main():
     with pytest.raises(SystemExit) as exc_info:
         runpy.run_module("main", run_name="__main__")
     assert exc_info.value.code == 1
+
+
+def test_get_pr_metadata_success(valid_config, mocker):
+    mock_response = mocker.Mock()
+    mock_response.json.return_value = {"title": "Test PR", "body": "This is a test"}
+    mock_response.raise_for_status.return_value = None
+    mock_get = mocker.patch("requests.get", return_value=mock_response)
+    
+    metadata = get_pr_metadata(valid_config)
+    assert metadata["title"] == "Test PR"
+    assert metadata["body"] == "This is a test"
+    mock_get.assert_called_once_with(
+        url="https://api.github.com/repos/user/repo/pulls/42",
+        headers={"Authorization": "token test-gh-token", "Accept": "application/vnd.github.v3+json"},
+        timeout=15
+    )
+
+def test_get_pr_metadata_missing_fields(valid_config, mocker):
+    mock_response = mocker.Mock()
+    mock_response.json.return_value = {}
+    mock_response.raise_for_status.return_value = None
+    mocker.patch("requests.get", return_value=mock_response)
+    
+    metadata = get_pr_metadata(valid_config)
+    assert metadata["title"] == "No Title"
+    assert metadata["body"] == "No Description"
+
+def test_get_pr_metadata_exception(valid_config, mocker):
+    mocker.patch("requests.get", side_effect=requests.RequestException("API down"))
+    metadata = get_pr_metadata(valid_config)
+    assert metadata["title"] == "Unknown"
+    assert metadata["body"] == "Unknown"
+
+def test_get_repo_context_files_present(mocker):
+    mocker.patch("os.path.exists", return_value=True)
+    mocker.patch("builtins.open", mocker.mock_open(read_data="Dummy content"))
+    
+    context = get_repo_context()
+    assert "--- README.md ---" in context
+    assert "Dummy content" in context
+    assert "--- CONTRIBUTING.md ---" in context
+
+def test_get_repo_context_no_files(mocker):
+    mocker.patch("os.path.exists", return_value=False)
+    context = get_repo_context()
+    assert context == ""
+
+def test_get_repo_context_read_exception(mocker):
+    mocker.patch("os.path.exists", return_value=True)
+    mocker.patch("builtins.open", side_effect=Exception("Permission denied"))
+    context = get_repo_context()
+    # It logs warning but skips the file, returning empty if all fail
+    assert context == ""
+
+def test_get_repo_context_truncate(mocker):
+    mocker.patch("os.path.exists", side_effect=lambda f: f == "README.md")
+    large_content = "a" * 10005
+    mocker.patch("builtins.open", mocker.mock_open(read_data=large_content))
+    
+    context = get_repo_context()
+    assert "...[truncated]" in context
+    assert len(context) < 11000
+
+def test_analyze_diff_with_context(valid_config, mocker):
+    valid_json = {"has_issues": False, "security": [], "maintainability": [], "readability": [], "performance": []}
+    mock_response = mocker.Mock()
+    mock_response.json.return_value = {"choices": [{"message": {"content": json.dumps(valid_json)}}]}
+    mock_response.raise_for_status.return_value = None
+    mock_post = mocker.patch("requests.post", return_value=mock_response)
+    
+    pr_metadata = {"title": "My Title", "body": "My Body"}
+    repo_context = "My Context"
+    
+    result = analyze_diff(valid_config, "diff", pr_metadata, repo_context)
+    assert result is not None
+    assert result.has_issues is False
+    
+    # Verify that the context was injected into the prompt
+    called_json = mock_post.call_args[1]["json"]
+    user_content = called_json["messages"][1]["content"]
+    assert "<pr_intent>\nTitle: My Title\nDescription: My Body\n</pr_intent>" in user_content
+    assert "<repo_context>\nMy Context</repo_context>" in user_content
