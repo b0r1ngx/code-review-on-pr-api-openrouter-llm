@@ -136,6 +136,21 @@ def extract_json_from_llm_response(content: str) -> str:
     return content
 
 
+def get_safe_code_fence(code: str) -> str:
+    """Returns the appropriate number of backticks (minimum 3) for fencing code blocks."""
+    if not code:
+        return "```"
+    # Find all sequences of backticks
+    matches = re.findall(r'`+', code)
+    if not matches:
+        return "```"
+    
+    # Find the maximum length of backtick sequence
+    max_backticks = max(len(m) for m in matches)
+    # The fence must be at least 3, and longer than any existing sequence
+    return "`" * max(3, max_backticks + 1)
+
+
 def analyze_diff(config: Dict[str, str], diff: str, pr_metadata: Dict[str, str], repo_context: str) -> Optional[CodeReviewResult]:
     """Sends the diff to the LLM for a strict, architect-level code review."""
     model = config["OPENROUTER_MODEL"]
@@ -185,7 +200,26 @@ Expected JSON Schema:
         response.raise_for_status()
         
         response_data = response.json()
-        raw_content = response_data["choices"][0]["message"]["content"]
+        
+        choices = response_data.get("choices") if isinstance(response_data, dict) else None
+        if not isinstance(choices, list) or not choices:
+            logger.error(f"Unexpected OpenRouter response format (missing choices). Raw: {response.text}")
+            return None
+            
+        first_choice = choices[0]
+        if not isinstance(first_choice, dict) or "message" not in first_choice:
+            logger.error(f"Unexpected OpenRouter response format (missing message). Raw: {response.text}")
+            return None
+            
+        message = first_choice.get("message")
+        if not isinstance(message, dict) or "content" not in message:
+            logger.error(f"Unexpected OpenRouter response format (missing content). Raw: {response.text}")
+            return None
+            
+        raw_content = message.get("content")
+        if not isinstance(raw_content, str):
+            logger.error(f"Unexpected OpenRouter response format (content is not string). Raw: {response.text}")
+            return None
         
         json_content = extract_json_from_llm_response(raw_content)
         parsed_json = json.loads(json_content)
@@ -239,11 +273,12 @@ def format_review_comment(review: CodeReviewResult) -> str:
             for issue in issues:
                 total_issues += 1
                 desc_safe = sanitize_markdown(issue.description)
-                sugg_safe = sanitize_markdown(issue.suggestion)
+                fence = get_safe_code_fence(issue.suggestion)
+                
                 lines.append(f"**File:** `{issue.file_path}` (Line `{issue.line}`) | **Severity:** {issue.severity}")
                 lines.append(f"**Issue:** {desc_safe}\n")
                 lines.append("**Suggestion:**")
-                lines.append(f"```\n{sugg_safe}\n```\n")
+                lines.append(f"{fence}\n{issue.suggestion}\n{fence}\n")
             lines.append("---\n")
             
     if total_issues == 0:

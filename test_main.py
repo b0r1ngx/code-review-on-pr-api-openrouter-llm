@@ -1,8 +1,5 @@
-import os
-import sys
 import json
 import pytest
-from pydantic import ValidationError
 import requests
 
 from main import (
@@ -17,7 +14,8 @@ from main import (
     main,
     CodeReviewResult,
     ReviewIssue,
-    sanitize_markdown
+    sanitize_markdown,
+    get_safe_code_fence
 )
 
 @pytest.fixture
@@ -140,6 +138,38 @@ def test_analyze_diff_validation_error(valid_config, mocker):
     mock_response.json.return_value = {
         "choices": [{"message": {"content": json.dumps(invalid_schema_json)}}]
     }
+    mocker.patch("requests.post", return_value=mock_response)
+    result = analyze_diff(valid_config, "fake diff", {}, "")
+    assert result is None
+
+def test_analyze_diff_missing_choices(valid_config, mocker):
+    mock_response = mocker.Mock()
+    mock_response.json.return_value = {"not_choices": []}
+    mock_response.text = '{"not_choices": []}'
+    mocker.patch("requests.post", return_value=mock_response)
+    result = analyze_diff(valid_config, "fake diff", {}, "")
+    assert result is None
+
+def test_analyze_diff_missing_message(valid_config, mocker):
+    mock_response = mocker.Mock()
+    mock_response.json.return_value = {"choices": ["not a dict"]}
+    mock_response.text = '{"choices": ["not a dict"]}'
+    mocker.patch("requests.post", return_value=mock_response)
+    result = analyze_diff(valid_config, "fake diff", {}, "")
+    assert result is None
+
+def test_analyze_diff_missing_content(valid_config, mocker):
+    mock_response = mocker.Mock()
+    mock_response.json.return_value = {"choices": [{"message": "not a dict"}]}
+    mock_response.text = '{"choices": [{"message": "not a dict"}]}'
+    mocker.patch("requests.post", return_value=mock_response)
+    result = analyze_diff(valid_config, "fake diff", {}, "")
+    assert result is None
+
+def test_analyze_diff_content_not_string(valid_config, mocker):
+    mock_response = mocker.Mock()
+    mock_response.json.return_value = {"choices": [{"message": {"content": {"nested": "dict"}}}]}
+    mock_response.text = '{"choices": [{"message": {"content": {"nested": "dict"}}}]}'
     mocker.patch("requests.post", return_value=mock_response)
     result = analyze_diff(valid_config, "fake diff", {}, "")
     assert result is None
@@ -304,6 +334,12 @@ def test_sanitize_markdown():
     sanitized = sanitize_markdown(text)
     assert sanitized == "Hello @\u200Busername, check out this link"
 
+def test_get_safe_code_fence():
+    assert get_safe_code_fence("") == "```"
+    assert get_safe_code_fence("print('hello')") == "```"
+    assert get_safe_code_fence("```python\nprint('hello')\n```") == "````"
+    assert get_safe_code_fence("Some code with ```` 4 backticks") == "`````"
+
 def test_main_handles_value_error(mocker):
     mocker.patch("main.validate_env_vars", side_effect=ValueError("Invalid env"))
     with pytest.raises(SystemExit) as exc_info:
@@ -319,7 +355,6 @@ def test_main_handles_exception(mocker, valid_config):
 
 def test_dunder_main():
     import runpy
-    import pytest
     with pytest.raises(SystemExit) as exc_info:
         runpy.run_module("main", run_name="__main__")
     assert exc_info.value.code == 1
