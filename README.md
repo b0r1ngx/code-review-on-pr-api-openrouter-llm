@@ -24,7 +24,7 @@ Uses [OpenRouter](https://openrouter.ai/) to route requests to any LLM (default:
 Copy these two files into your repository root:
 
 - **`main.py`** -- the code review script
-- **`requirements.txt`** -- Python dependencies (`requests`, `pydantic>=2.0.0`)
+- **`requirements.txt`** -- production Python dependencies (`requests`, `pydantic>=2.0.0`)
 
 ### 2. Create the workflow file
 
@@ -170,12 +170,12 @@ The tool is designed with defense-in-depth against prompt injection and output a
 The test suite is fully self-contained with no network calls:
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 pip install pytest-cov
 pytest test_main.py --cov=main -v
 ```
 
-51 tests, 99% coverage.
+57 tests, 99% coverage.
 
 ---
 
@@ -185,3 +185,5 @@ pytest test_main.py --cov=main -v
 - `requests` -- HTTP client for GitHub and OpenRouter APIs
 - `pydantic>=2.0.0` -- structured response parsing and validation
 - An [OpenRouter](https://openrouter.ai/) API key (free tier available)
+
+Dependencies are split across two files: `requirements.txt` (production deps for running `main.py`) and `requirements-dev.txt` (adds test deps: `pytest`, `pytest-mock`).

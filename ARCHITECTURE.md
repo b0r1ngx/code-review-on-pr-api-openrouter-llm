@@ -21,7 +21,7 @@ Internal architecture reference for the AI Code Review GitHub Action.
 
 ## Overview
 
-Single-file Python tool (`main.py`, ~386 lines) that runs as a GitHub Action. It fetches PR diffs from the GitHub API, sends them to an LLM via the OpenRouter API, parses the structured JSON response into Pydantic models, and posts a formatted Markdown review comment back to the PR.
+Single-file Python tool (`main.py`) that runs as a GitHub Action. It fetches PR diffs from the GitHub API, sends them to an LLM via the OpenRouter API, parses the structured JSON response into Pydantic models, and posts a formatted Markdown review comment back to the PR.
 
 The LLM is prompted to act as an "extremely strict senior software architect" and returns issues categorized by severity (`Critical`, `Major`, `Minor`, `Nitpick`) across four review categories: security, maintainability, readability, and performance.
 
@@ -173,7 +173,7 @@ Two-message conversation:
 2. Parses the result with `json.loads()`.
 3. Validates against `CodeReviewResult` via Pydantic.
 
-If parsing or validation fails, the function raises an exception that propagates to `main()`.
+If parsing or validation fails, the function returns `None`, and `main()` detects this and exits with a non-zero status (`sys.exit(1)`).
 
 ---
 
@@ -194,10 +194,17 @@ All required variables are validated at startup. Missing or malformed values cau
 
 ## Dependencies
 
+Production dependencies (`requirements.txt`):
+
 | Package | Version | Purpose |
 |---------|---------|---------|
 | `requests` | `~=2.32.5` | HTTP client for GitHub and OpenRouter APIs |
 | `pydantic` | `>=2.0.0` | Structured output validation for LLM responses |
+
+Development dependencies (`requirements-dev.txt`, includes production deps via `-r requirements.txt`):
+
+| Package | Version | Purpose |
+|---------|---------|---------|
 | `pytest` | `>=8.0.0` | Test framework |
 | `pytest-mock` | `>=3.12.0` | Mocking utilities for tests |
 
@@ -207,7 +214,7 @@ No transitive dependencies beyond what these packages bring. Standard library mo
 
 ## Test Suite
 
-51 tests in `test_main.py` with 99% code coverage. All tests are fully mocked -- no network calls are made.
+57 tests in `test_main.py` with 99% code coverage. All tests are fully mocked -- no network calls are made.
 
 ### Coverage areas
 

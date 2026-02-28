@@ -152,7 +152,7 @@ def test_analyze_diff_invalid_json(valid_config, mocker):
 
 def test_analyze_diff_validation_error(valid_config, mocker):
     invalid_schema_json = {
-        "has_issues": "not_a_boolean",  # something that definitely fails strict bool parsing
+        "has_issues": "not_a_boolean",  # coerced to True by Pydantic v2 lax mode; security field below triggers ValidationError
         "security": "not a list"
     }
     mock_response = mocker.Mock()
@@ -487,7 +487,7 @@ def test_get_repo_context_files_present(mocker):
     mocker.patch("builtins.open", mocker.mock_open(read_data="Dummy content"))
     
     context = get_repo_context()
-    assert "--- README.md ---" in context
+    assert "--- AGENTS.md ---" in context
     assert "Dummy content" in context
     assert "--- CONTRIBUTING.md ---" in context
 
@@ -504,7 +504,7 @@ def test_get_repo_context_read_exception(mocker):
     assert context == ""
 
 def test_get_repo_context_truncate(mocker):
-    mocker.patch("os.path.exists", side_effect=lambda f: f == "README.md")
+    mocker.patch("os.path.exists", side_effect=lambda f: f == "AGENTS.md")
     large_content = "a" * 10005
     mocker.patch("builtins.open", mocker.mock_open(read_data=large_content))
     
