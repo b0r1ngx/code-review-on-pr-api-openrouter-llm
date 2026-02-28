@@ -116,7 +116,8 @@ def get_pr_metadata(config: Dict[str, Any]) -> Dict[str, str]:
 def get_repo_context() -> str:
     """Gathers context from repository guidelines like README.md and CONTRIBUTING.md."""
     logger.info("Gathering repository context...")
-    context_files = ["README.md", "CONTRIBUTING.md", "AGENTS.md"]
+    # Add README.md if you need to
+    context_files = ["AGENTS.md", "CONTRIBUTING.md"]
     context_content = []
     
     for file_name in context_files:
