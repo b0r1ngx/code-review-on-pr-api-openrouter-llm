@@ -22,8 +22,8 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          pip install pytest pytest-cov
+          pip install -r requirements-dev.txt
+          pip install pytest-cov
 
       - name: Run tests with pytest
         run: pytest test_main.py --cov=main
