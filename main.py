@@ -3,7 +3,7 @@ import sys
 import json
 import logging
 import re
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 import requests
 from pydantic import BaseModel, Field, ValidationError
 
@@ -17,7 +17,9 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 class ReviewIssue(BaseModel):
     file_path: str = Field(description="The exact file path where the issue was found")
     line: str = Field(description="The line number or range (e.g., '42' or '42-45')")
-    severity: str = Field(description="Must be one of: Critical, Major, Minor, Nitpick")
+    severity: Literal["Critical", "Major", "Minor", "Nitpick"] = Field(
+        description="Must be exactly one of: Critical, Major, Minor, Nitpick"
+    )
     description: str = Field(description="Detailed, brutal explanation of the issue and why it violates best practices")
     suggestion: str = Field(description="Actionable code suggestion or code snippet to fix the issue")
 
@@ -118,8 +120,8 @@ def get_repo_context() -> str:
                     if len(content) > max_len:
                         content = content[:max_len] + "\n...[truncated]"
                     context_content.append(f"--- {file_name} ---\n{content}\n")
-            except Exception as e:
-                logger.warning(f"Failed to read {file_name}: {e}")
+            except (OSError, UnicodeDecodeError) as e:
+                logger.warning(f"Could not read context file {file_name}: {e}")
                 
     if not context_content:
         logger.info("No repository context files found.")
@@ -249,6 +251,7 @@ Expected JSON Schema:
 
 def sanitize_markdown(text: str) -> str:
     """Sanitizes text to prevent markdown breakout and malicious links."""
+    text = text.replace("<", "&lt;").replace(">", "&gt;")
     text = text.replace("```", "`")
     text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
     # Prevent unintended user mentions

@@ -357,9 +357,9 @@ def test_main_empty_comment(mocker, valid_config):
     mock_post.assert_not_called()
 
 def test_sanitize_markdown():
-    text = "Hello @username, check out [this link](http://evil.com)"
+    text = "Hello @username, check out [this link](http://evil.com) <div>bad</div>"
     sanitized = sanitize_markdown(text)
-    assert sanitized == "Hello @\u200Busername, check out this link"
+    assert sanitized == "Hello @\u200Busername, check out this link &lt;div&gt;bad&lt;/div&gt;"
 
 def test_get_safe_code_fence():
     assert get_safe_code_fence("") == "```"
@@ -434,7 +434,7 @@ def test_get_repo_context_no_files(mocker):
 
 def test_get_repo_context_read_exception(mocker):
     mocker.patch("os.path.exists", return_value=True)
-    mocker.patch("builtins.open", side_effect=Exception("Permission denied"))
+    mocker.patch("builtins.open", side_effect=OSError("Permission denied"))
     context = get_repo_context()
     # It logs warning but skips the file, returning empty if all fail
     assert context == ""
