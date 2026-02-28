@@ -96,9 +96,17 @@ def get_pr_metadata(config: Dict[str, Any]) -> Dict[str, str]:
         response = requests.get(url=url, headers=headers, timeout=15)
         response.raise_for_status()
         data = response.json()
+        title = data.get("title") or "No Title"
+        if len(title) > 200:
+            title = title[:200] + "...[truncated]"
+            
+        body = data.get("body") or "No Description"
+        if len(body) > 2000:
+            body = body[:2000] + "...[truncated]"
+            
         return {
-            "title": (data.get("title") or "No Title")[:200],
-            "body": (data.get("body") or "No Description")[:2000]
+            "title": title,
+            "body": body
         }
     except requests.RequestException as e:
         logger.warning(f"Failed to fetch PR metadata: {e}. Proceeding without it.")
@@ -285,9 +293,10 @@ def format_review_comment(review: CodeReviewResult) -> str:
                 total_issues += 1
                 desc_safe = sanitize_markdown(issue.description)
                 file_path_safe = sanitize_markdown(issue.file_path)
+                line_safe = sanitize_markdown(str(issue.line))
                 fence = get_safe_code_fence(issue.suggestion)
                 
-                lines.append(f"**File:** `{file_path_safe}` (Line `{issue.line}`) | **Severity:** {issue.severity}")
+                lines.append(f"**File:** `{file_path_safe}` (Line `{line_safe}`) | **Severity:** {issue.severity}")
                 lines.append(f"**Issue:** {desc_safe}\n")
                 lines.append("**Suggestion:**")
                 lines.append(f"{fence}\n{issue.suggestion}\n{fence}\n")

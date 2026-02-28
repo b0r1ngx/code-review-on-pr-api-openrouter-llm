@@ -149,7 +149,7 @@ def test_analyze_diff_invalid_json(valid_config, mocker):
 
 def test_analyze_diff_validation_error(valid_config, mocker):
     invalid_schema_json = {
-        "has_issues": 12345,  # something that definitely fails strict bool parsing or isn't a list where expected
+        "has_issues": "not_a_boolean",  # something that definitely fails strict bool parsing
         "security": "not a list"
     }
     mock_response = mocker.Mock()
@@ -245,6 +245,8 @@ def test_post_comment_to_pr_exception(valid_config, mocker):
 def test_main_flow_success(mocker, valid_config):
     mocker.patch("main.validate_env_vars", return_value=valid_config)
     mocker.patch("main.get_pr_diff", return_value="fake diff")
+    mocker.patch("main.get_pr_metadata", return_value={"title": "T", "body": "B"})
+    mocker.patch("main.get_repo_context", return_value="C")
     review = CodeReviewResult(
         has_issues=True,
         security=[ReviewIssue(file_path="a.py", line="1", severity="Critical", description="bad", suggestion="fix")]
@@ -258,6 +260,8 @@ def test_main_flow_success(mocker, valid_config):
 def test_main_flow_no_diff(mocker, valid_config):
     mocker.patch("main.validate_env_vars", return_value=valid_config)
     mocker.patch("main.get_pr_diff", return_value=None)
+    mocker.patch("main.get_pr_metadata", return_value={"title": "T", "body": "B"})
+    mocker.patch("main.get_repo_context", return_value="C")
     mock_analyze = mocker.patch("main.analyze_diff")
     main()
     mock_analyze.assert_not_called()
@@ -265,6 +269,8 @@ def test_main_flow_no_diff(mocker, valid_config):
 def test_main_flow_analyze_fails(mocker, valid_config):
     mocker.patch("main.validate_env_vars", return_value=valid_config)
     mocker.patch("main.get_pr_diff", return_value="fake diff")
+    mocker.patch("main.get_pr_metadata", return_value={"title": "T", "body": "B"})
+    mocker.patch("main.get_repo_context", return_value="C")
     mocker.patch("main.analyze_diff", return_value=None)
     with pytest.raises(SystemExit) as exc_info:
         main()
@@ -273,6 +279,8 @@ def test_main_flow_analyze_fails(mocker, valid_config):
 def test_main_flow_no_issues(mocker, valid_config):
     mocker.patch("main.validate_env_vars", return_value=valid_config)
     mocker.patch("main.get_pr_diff", return_value="fake diff")
+    mocker.patch("main.get_pr_metadata", return_value={"title": "T", "body": "B"})
+    mocker.patch("main.get_repo_context", return_value="C")
     mocker.patch("main.analyze_diff", return_value=CodeReviewResult(has_issues=False))
     mock_post = mocker.patch("main.post_comment_to_pr")
     main()
@@ -347,6 +355,8 @@ def test_post_comment_to_pr_exception_with_response(valid_config, mocker):
 def test_main_empty_comment(mocker, valid_config):
     mocker.patch("main.validate_env_vars", return_value=valid_config)
     mocker.patch("main.get_pr_diff", return_value="fake diff")
+    mocker.patch("main.get_pr_metadata", return_value={"title": "T", "body": "B"})
+    mocker.patch("main.get_repo_context", return_value="C")
     # Return a review result that produces an empty comment
     empty_review = CodeReviewResult(has_issues=True, security=[], maintainability=[], readability=[], performance=[])
     mocker.patch("main.analyze_diff", return_value=empty_review)
@@ -380,7 +390,9 @@ def test_main_handles_exception(mocker, valid_config):
         main()
     assert exc_info.value.code == 1
 
-def test_dunder_main():
+def test_dunder_main(mocker):
+    mocker.patch("main.get_pr_metadata")
+    mocker.patch("main.get_repo_context")
     import runpy
     with pytest.raises(SystemExit) as exc_info:
         runpy.run_module("main", run_name="__main__")
